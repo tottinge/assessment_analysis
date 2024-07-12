@@ -24,7 +24,7 @@ class Field(StrEnum):
 ID = Field.ID
 BG_COLOR = Field.BG_COLOR
 
-stickies_df = pd.read_csv('~/Assessment Findings - All Quotes.csv')
+stickies_df = pd.read_csv('Assessment Findings - All Quotes.csv')
 stickies_df.drop(inplace=True, axis='columns', labels=[
     'Sticky type',
     'Border line',
