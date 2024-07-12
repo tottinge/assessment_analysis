@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "assessment-analysis"
+version = "0.1.0"
+description = ""
+authors = ["Tim Ottinger <tottinge@industriallogic.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+networkx = "^3.3"
+pandas = "^2.2.2"
+textblob = "^0.18.0.post0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
