@@ -24,7 +24,9 @@ class Field(StrEnum):
 ID = Field.ID
 BG_COLOR = Field.BG_COLOR
 
-stickies_df = pd.read_csv('Assessment Findings - All Quotes.csv')
+# csv_filename = 'Assessment Findings - All Quotes.csv'
+csv_filename = 'MiniMap.csv'
+stickies_df = pd.read_csv(csv_filename)
 stickies_df = stickies_df.drop(axis='columns', labels=[
     'Sticky type',
     'Border line',
@@ -44,6 +46,8 @@ color_map = {
     '#FCF281': '3-Yellow',
     '#FFC061': '4-Orange',
     '#E95E5E': '5-DarkRed',
+    '#86E6D9': 'Team-Label',
+    '#FFFFFF': 'Topic-Label'
 }
 stickies_df.replace({BG_COLOR: color_map}, inplace=True)
 stickies_df['Disagreement'] = stickies_df[BG_COLOR].str[0]
@@ -80,6 +84,10 @@ scoring = []
 for number, group in enumerate(nx.connected_components(graph)):
     sticky_group = [graph.nodes[id][Field.DATA] for id in group]
 
+    [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
+    [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
+    group_id = f'{team_name}-{topic}'
+
     population = len(sticky_group)
 
     # Analyze based on sticky note background colors
@@ -107,7 +115,7 @@ for number, group in enumerate(nx.connected_components(graph)):
     discussion = TextBlob(combined_text)
 
     # Report...
-    print(f"Group #{number}")
+    print(f"Group {group_id}")
     print(f"   {population} total responses")
     print(f"   Score: {score}")
     print(f"   +{positive}% {neutral}% -{negative}%")
