@@ -25,7 +25,7 @@ ID = Field.ID
 BG_COLOR = Field.BG_COLOR
 
 stickies_df = pd.read_csv('Assessment Findings - All Quotes.csv')
-stickies_df.drop(inplace=True, axis='columns', labels=[
+stickies_df = stickies_df.drop(axis='columns', labels=[
     'Sticky type',
     'Border line',
     'Area',
