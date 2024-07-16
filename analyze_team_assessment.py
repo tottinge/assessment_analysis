@@ -126,7 +126,7 @@ for number, group in enumerate(groups):
     print(f"   +{positive}% {neutral}% -{negative}%")
     print(f"   Topics: {discussion.noun_phrases}")
     print(f"   Sentiment: {discussion.sentiment_assessments}")
-    group_members_by_color = sorted(sticky_group, key=lambda x: x[Field.BG_COLOR])
+    group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
     for sticky in group_members_by_color:
         mural_id = sticky[Field.ID]
         x = sticky[Field.X]
