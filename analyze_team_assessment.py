@@ -118,24 +118,18 @@ def main(filename: str):
         yellow = backgrounds.count('3-Yellow')
         orange = backgrounds.count('4-Orange')
         darkred = backgrounds.count('5-DarkRed')
-
-        # Calculate score
         score = ((darkred * 0) + (orange * 25) + (yellow * 50) + (lightgreen * 75) + (darkgreen * 100)) // population
 
-        # Overt sentiment analysis
-        positive = int((lightgreen + darkgreen) / population * 100)
-        neutral = int(yellow / population * 100)
-        negative = int((darkred + orange) / population * 100)
+        positive_colors = ['1-DarkGreen', '2-LightGreen']
+        negative_colors = ['4-Orange', '5-Darkred']
+        positive_discussion = check_sentiment( x for x in sticky_group if x[Field.BG_COLOR] in positive_colors)
+        negative_discussion = check_sentiment( x for x in sticky_group if x[Field.BG_COLOR] in negative_colors)
 
-        discussion = check_sentiment(sticky_group)
-
-        # Report...
         print(f"Group {group_id}")
         print(f"   {population} total responses")
         print(f"   Score: {score}")
-        print(f"   +{positive}% {neutral}% -{negative}%")
-        print(f"   Topics: {discussion.noun_phrases}")
-        print(f"   Sentiment: {discussion.sentiment_assessments}")
+        print(f"   Positive Topics: {positive_discussion.noun_phrases}")
+        print(f"   Negative Topics: {negative_discussion.noun_phrases}")
         group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
         for sticky in group_members_by_color:
             mural_id = sticky[Field.ID]
@@ -149,7 +143,6 @@ def main(filename: str):
         scoring.append([group_id, score])
     for (group_id, score) in scoring:
         print(f"{group_id}: {score}")
-    # d. Push group assignment back into the df
 
 
 if __name__ == '__main__':
