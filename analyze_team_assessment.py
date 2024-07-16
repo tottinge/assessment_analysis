@@ -13,6 +13,7 @@ from textblob import TextBlob
 
 
 class Field(StrEnum):
+    """ Field names for the sticky notes DF from Mural"""
     TEXT = 'Text'
     DATA = "data"
     ID = 'ID'
@@ -76,19 +77,6 @@ def build_connection_graph(df):
     return graph
 
 
-# csv_filename = 'Assessment Findings - All Quotes.csv'
-# csv_filename = 'MiniMap.csv'
-csv_filename = 'PartialMap.csv'
-stickies_df = pd.read_csv(csv_filename)
-stickies_df = drop_unused_columns(stickies_df)
-stickies_df = replace_rgb_codes_with_names(stickies_df)
-graph = build_connection_graph(stickies_df)
-
-# c. Show all connected groups.
-scoring = []
-groups = list(nx.connected_components(graph))
-
-
 def check_sentiment(sticky_group):
     text_fields = (note[Field.TEXT].rstrip('.') for note in sticky_group if isinstance(note[Field.TEXT], str))
     combined_text = ". ".join(text_fields)
@@ -110,50 +98,59 @@ def generate_group_id(sticky_group, number) -> str:
     return group_id
 
 
-for number, group in enumerate(groups):
-    sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
-    group_id = generate_group_id(sticky_group, number)
+def main(filename: str):
+    stickies_df = pd.read_csv(filename)
+    stickies_df = drop_unused_columns(stickies_df)
+    stickies_df = replace_rgb_codes_with_names(stickies_df)
+    graph = build_connection_graph(stickies_df)
+    # c. Show all connected groups.
+    scoring = []
+    groups = list(nx.connected_components(graph))
+    for number, group in enumerate(groups):
+        sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
+        group_id = generate_group_id(sticky_group, number)
+        population = len(sticky_group)
 
-    population = len(sticky_group)
+        # Analyze based on sticky note background colors
+        backgrounds = [note[Field.BG_COLOR] for note in sticky_group]
+        darkgreen = backgrounds.count('1-DarkGreen')
+        lightgreen = backgrounds.count('2-LightGreen')
+        yellow = backgrounds.count('3-Yellow')
+        orange = backgrounds.count('4-Orange')
+        darkred = backgrounds.count('5-DarkRed')
 
-    # Analyze based on sticky note background colors
-    backgrounds = [note[Field.BG_COLOR] for note in sticky_group]
-    darkgreen = backgrounds.count('1-DarkGreen')
-    lightgreen = backgrounds.count('2-LightGreen')
-    yellow = backgrounds.count('3-Yellow')
-    orange = backgrounds.count('4-Orange')
-    darkred = backgrounds.count('5-DarkRed')
+        # Calculate score
+        score = ((darkred * 0) + (orange * 25) + (yellow * 50) + (lightgreen * 75) + (darkgreen * 100)) // population
 
-    # Calculate score
-    score = ((darkred * 0) + (orange * 25) + (yellow * 50) + (lightgreen * 75) + (darkgreen * 100)) // population
+        # Overt sentiment analysis
+        positive = int((lightgreen + darkgreen) / population * 100)
+        neutral = int(yellow / population * 100)
+        negative = int((darkred + orange) / population * 100)
 
-    # Overt sentiment analysis
-    positive = int((lightgreen + darkgreen) / population * 100)
-    neutral = int(yellow / population * 100)
-    negative = int((darkred + orange) / population * 100)
+        discussion = check_sentiment(sticky_group)
 
-    discussion = check_sentiment(sticky_group)
+        # Report...
+        print(f"Group {group_id}")
+        print(f"   {population} total responses")
+        print(f"   Score: {score}")
+        print(f"   +{positive}% {neutral}% -{negative}%")
+        print(f"   Topics: {discussion.noun_phrases}")
+        print(f"   Sentiment: {discussion.sentiment_assessments}")
+        group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
+        for sticky in group_members_by_color:
+            mural_id = sticky[Field.ID]
+            x = sticky[Field.X]
+            y = sticky[Field.Y]
+            mural_color = sticky[Field.BG_COLOR]
+            text = sticky[Field.TEXT]
+            print(f"   {mural_id}, ({x}, {y}), {mural_color}, \"{text}\"")
+        print("\n")
 
-    # Report...
-    print(f"Group {group_id}")
-    print(f"   {population} total responses")
-    print(f"   Score: {score}")
-    print(f"   +{positive}% {neutral}% -{negative}%")
-    print(f"   Topics: {discussion.noun_phrases}")
-    print(f"   Sentiment: {discussion.sentiment_assessments}")
-    group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
-    for sticky in group_members_by_color:
-        mural_id = sticky[Field.ID]
-        x = sticky[Field.X]
-        y = sticky[Field.Y]
-        mural_color = sticky[Field.BG_COLOR]
-        text = sticky[Field.TEXT]
-        print(f"   {mural_id}, ({x}, {y}), {mural_color}, \"{text}\"")
-    print("\n")
+        scoring.append([group_id, score])
+    for (group_id, score) in scoring:
+        print(f"{group_id}: {score}")
+    # d. Push group assignment back into the df
 
-    scoring.append([group_id, score])
 
-for (group_id, score) in scoring:
-    print(f"{group_id}: {score}")
-
-# d. Push group assignment back into the df
+if __name__ == '__main__':
+    main('PartialMap.csv')
