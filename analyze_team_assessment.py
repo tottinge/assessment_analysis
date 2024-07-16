@@ -21,11 +21,9 @@ class Field(StrEnum):
     Y = 'Position Y'
 
 
-ID = Field.ID
-BG_COLOR = Field.BG_COLOR
-
 # csv_filename = 'Assessment Findings - All Quotes.csv'
-csv_filename = 'MiniMap.csv'
+# csv_filename = 'MiniMap.csv'
+csv_filename = 'PartialMap.csv'
 stickies_df = pd.read_csv(csv_filename)
 stickies_df = stickies_df.drop(axis='columns', labels=[
     'Sticky type',
@@ -49,8 +47,8 @@ color_map = {
     '#86E6D9': 'Team-Label',
     '#FFFFFF': 'Topic-Label'
 }
-stickies_df.replace({BG_COLOR: color_map}, inplace=True)
-stickies_df['Disagreement'] = stickies_df[BG_COLOR].str[0]
+stickies_df.replace({Field.BG_COLOR: color_map}, inplace=True)
+stickies_df['Disagreement'] = stickies_df[Field.BG_COLOR].str[0]
 
 
 def distance(left: dict, right: dict) -> float:
@@ -61,32 +59,39 @@ def distance(left: dict, right: dict) -> float:
 
 stickies_list = list(stickies_df.to_dict(orient='records'))
 raw_distances = [
-    (distance(left, right), left[ID], right[ID])
+    (distance(left, right), left[Field.ID], right[Field.ID])
     for left, right in combinations(stickies_list, 2)
 ]
-distances = sorted(raw_distances, key=lambda x: x[0])
+distances = sorted(raw_distances, key=lambda node: node[0])
 
 # My idea is that we
 # a. add all stickies to a graph as nodes
 graph = nx.Graph()
 for sticky in stickies_list:
-    graph.add_node(sticky[ID], data=sticky)
+    graph.add_node(sticky[Field.ID], data=sticky)
 
 # b. add edges, shortest-distance-first, until there are no unconnected nodes
 for dist, left, right in distances:
     graph.add_edge(left, right)
-    unconnected_nodes = [node_id for node_id, connections in graph.degree if connections == 0]
-    if len(unconnected_nodes) == 0:
+    d = min(dict(graph.degree).values())
+    if d == 2:
         break
 
 # c. Show all connected groups.
 scoring = []
-for number, group in enumerate(nx.connected_components(graph)):
-    sticky_group = [graph.nodes[id][Field.DATA] for id in group]
-
-    [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
-    [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
-    group_id = f'{team_name}-{topic}'
+groups = list(nx.connected_components(graph))
+for number, group in enumerate(groups):
+    sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
+    group_id = ""
+    try:
+        [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
+        [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
+        group_id = f'{team_name}-{topic}'
+    except ValueError:
+        group_id = f"Group #{number}"
+        print(f"NO ID GENERATED FOR {group_id}")
+        for sticky in sticky_group:
+            print("...\t", sticky[Field.BG_COLOR], sticky[Field.ID], sticky[Field.TEXT])
 
     population = len(sticky_group)
 
@@ -107,9 +112,9 @@ for number, group in enumerate(nx.connected_components(graph)):
     negative = int((darkred + orange) / population * 100)
 
     combined_text = ". ".join(note[Field.TEXT].rstrip('.')
-                             for note in sticky_group
-                             if isinstance(note[Field.TEXT], str)
-                             )
+                              for note in sticky_group
+                              if isinstance(note[Field.TEXT], str)
+                              )
 
     # Use TextBlob to analyze combined text of all comments
     discussion = TextBlob(combined_text)
@@ -121,9 +126,9 @@ for number, group in enumerate(nx.connected_components(graph)):
     print(f"   +{positive}% {neutral}% -{negative}%")
     print(f"   Topics: {discussion.noun_phrases}")
     print(f"   Sentiment: {discussion.sentiment_assessments}")
-    group_members_by_color = sorted(sticky_group, key=lambda x: x[BG_COLOR])
+    group_members_by_color = sorted(sticky_group, key=lambda x: x[Field.BG_COLOR])
     for sticky in group_members_by_color:
-        mural_id = sticky[ID]
+        mural_id = sticky[Field.ID]
         x = sticky[Field.X]
         y = sticky[Field.Y]
         mural_color = sticky[Field.BG_COLOR]
@@ -131,9 +136,9 @@ for number, group in enumerate(nx.connected_components(graph)):
         print(f"   {mural_id}, ({x}, {y}), {mural_color}, \"{text}\"")
     print("\n")
 
-    scoring.append( [number,score])
+    scoring.append([number, score])
 
-for(group_number, score) in scoring:
+for (group_number, score) in scoring:
     print(f"{group_number}: {score}")
 
 # d. Push group assignment back into the df
