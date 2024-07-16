@@ -136,9 +136,9 @@ for number, group in enumerate(groups):
         print(f"   {mural_id}, ({x}, {y}), {mural_color}, \"{text}\"")
     print("\n")
 
-    scoring.append([number, score])
+    scoring.append([group_id, score])
 
-for (group_number, score) in scoring:
-    print(f"{group_number}: {score}")
+for (group_id, score) in scoring:
+    print(f"{group_id}: {score}")
 
 # d. Push group assignment back into the df
