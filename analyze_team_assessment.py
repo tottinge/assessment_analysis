@@ -21,34 +21,35 @@ class Field(StrEnum):
     Y = 'Position Y'
 
 
-# csv_filename = 'Assessment Findings - All Quotes.csv'
-# csv_filename = 'MiniMap.csv'
-csv_filename = 'PartialMap.csv'
-stickies_df = pd.read_csv(csv_filename)
-stickies_df = stickies_df.drop(axis='columns', labels=[
-    'Sticky type',
-    'Border line',
-    'Area',
-    'Link to',
-    'Last Updated By',
-    'Last Updated',
-    'Tags',
-    'Integration Labels'])
+def drop_unused_columns(raw_df):
+    result_df = raw_df.drop(axis='columns', labels=[
+        'Sticky type',
+        'Border line',
+        'Area',
+        'Link to',
+        'Last Updated By',
+        'Last Updated',
+        'Tags',
+        'Integration Labels'])
+    return result_df
 
-# As given, we have color numbers. We'd like these to be
-# names and numbers we can relate to (as we don't "see"
-# rgb codes).
-color_map = {
-    '#459C5B': '1-DarkGreen',
-    '#AAED92': '2-LightGreen',
-    '#FCF281': '3-Yellow',
-    '#FFC061': '4-Orange',
-    '#E95E5E': '5-DarkRed',
-    '#86E6D9': 'Team-Label',
-    '#FFFFFF': 'Topic-Label'
-}
-stickies_df.replace({Field.BG_COLOR: color_map}, inplace=True)
-stickies_df['Disagreement'] = stickies_df[Field.BG_COLOR].str[0]
+
+def replace_rgb_codes_with_names(input_df):
+    # As given, we have color numbers. We'd like these to be
+    # names and numbers we can relate to (as we don't "see"
+    # rgb codes).
+    color_map = {
+        '#459C5B': '1-DarkGreen',
+        '#AAED92': '2-LightGreen',
+        '#FCF281': '3-Yellow',
+        '#FFC061': '4-Orange',
+        '#E95E5E': '5-DarkRed',
+        '#86E6D9': 'Team-Label',
+        '#FFFFFF': 'Topic-Label'
+    }
+    out_df = input_df.replace({Field.BG_COLOR: color_map})
+    out_df['Disagreement'] = out_df[Field.BG_COLOR].str[0]
+    return out_df
 
 
 def distance(left: dict, right: dict) -> float:
@@ -57,32 +58,46 @@ def distance(left: dict, right: dict) -> float:
     return sqrt((left_x - right_x) ** 2 + (left_y - right_y) ** 2)
 
 
-stickies_list = list(stickies_df.to_dict(orient='records'))
-raw_distances = [
-    (distance(left, right), left[Field.ID], right[Field.ID])
-    for left, right in combinations(stickies_list, 2)
-]
-distances = sorted(raw_distances, key=lambda node: node[0])
+def build_connection_graph(df):
+    stickies_list = list(df.to_dict(orient='records'))
+    raw_distances = [
+        (distance(left, right), left[Field.ID], right[Field.ID])
+        for left, right in combinations(stickies_list, 2)
+    ]
+    distances = sorted(raw_distances, key=lambda node: node[0])
+    graph = nx.Graph()
+    for sticky in stickies_list:
+        graph.add_node(sticky[Field.ID], data=sticky)
+    for dist, left, right in distances:
+        graph.add_edge(left, right)
+        least_connections = min(dict(graph.degree).values())
+        if least_connections == 2:
+            break
+    return graph
 
-# My idea is that we
-# a. add all stickies to a graph as nodes
-graph = nx.Graph()
-for sticky in stickies_list:
-    graph.add_node(sticky[Field.ID], data=sticky)
 
-# b. add edges, shortest-distance-first, until there are no unconnected nodes
-for dist, left, right in distances:
-    graph.add_edge(left, right)
-    d = min(dict(graph.degree).values())
-    if d == 2:
-        break
+# csv_filename = 'Assessment Findings - All Quotes.csv'
+# csv_filename = 'MiniMap.csv'
+csv_filename = 'PartialMap.csv'
+stickies_df = pd.read_csv(csv_filename)
+stickies_df = drop_unused_columns(stickies_df)
+stickies_df = replace_rgb_codes_with_names(stickies_df)
+graph = build_connection_graph(stickies_df)
 
 # c. Show all connected groups.
 scoring = []
 groups = list(nx.connected_components(graph))
-for number, group in enumerate(groups):
-    sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
-    group_id = ""
+
+
+def check_sentiment(sticky_group):
+    text_fields = (note[Field.TEXT].rstrip('.') for note in sticky_group if isinstance(note[Field.TEXT], str))
+    combined_text = ". ".join(text_fields)
+    discussion = TextBlob(combined_text)
+    return discussion
+
+
+def generate_group_id(sticky_group, number) -> str:
+    group_id: str = ""
     try:
         [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
         [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
@@ -92,6 +107,12 @@ for number, group in enumerate(groups):
         print(f"NO ID GENERATED FOR {group_id}")
         for sticky in sticky_group:
             print("...\t", sticky[Field.BG_COLOR], sticky[Field.ID], sticky[Field.TEXT])
+    return group_id
+
+
+for number, group in enumerate(groups):
+    sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
+    group_id = generate_group_id(sticky_group, number)
 
     population = len(sticky_group)
 
@@ -111,13 +132,7 @@ for number, group in enumerate(groups):
     neutral = int(yellow / population * 100)
     negative = int((darkred + orange) / population * 100)
 
-    combined_text = ". ".join(note[Field.TEXT].rstrip('.')
-                              for note in sticky_group
-                              if isinstance(note[Field.TEXT], str)
-                              )
-
-    # Use TextBlob to analyze combined text of all comments
-    discussion = TextBlob(combined_text)
+    discussion = check_sentiment(sticky_group)
 
     # Report...
     print(f"Group {group_id}")
