@@ -3,13 +3,26 @@ Try to give an analysis of topics from a downloaded mural,
 where the download is a set of sticky notes with text,
 color, and position.
 """
+import csv
+import sys
+from dataclasses import dataclass, asdict
 from enum import StrEnum
 from itertools import combinations
 from math import sqrt
 
 import networkx as nx
 import pandas as pd
-from textblob import TextBlob
+
+
+@dataclass
+class Analysis:
+    team_name: str
+    topic: str
+    population: int
+    score: int
+    red_text: str
+    yellow_text: str
+    green_text: str
 
 
 class Field(StrEnum):
@@ -77,25 +90,9 @@ def build_connection_graph(df):
     return graph
 
 
-def check_sentiment(sticky_group):
+def collect_text(sticky_group):
     text_fields = (note[Field.TEXT].rstrip('.') for note in sticky_group if isinstance(note[Field.TEXT], str))
-    combined_text = ". ".join(text_fields)
-    discussion = TextBlob(combined_text)
-    return discussion
-
-
-def generate_group_id(sticky_group, number) -> str:
-    group_id: str = ""
-    try:
-        [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
-        [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
-        group_id = f'{team_name}-{topic}'
-    except ValueError:
-        group_id = f"Group #{number}"
-        print(f"NO ID GENERATED FOR {group_id}")
-        for sticky in sticky_group:
-            print("...\t", sticky[Field.BG_COLOR], sticky[Field.ID], sticky[Field.TEXT])
-    return group_id
+    return ". ".join(text_fields)
 
 
 def main(filename: str):
@@ -103,12 +100,18 @@ def main(filename: str):
     stickies_df = drop_unused_columns(stickies_df)
     stickies_df = replace_rgb_codes_with_names(stickies_df)
     graph = build_connection_graph(stickies_df)
-    # c. Show all connected groups.
-    scoring = []
+
+    analyses = []
+
     groups = list(nx.connected_components(graph))
     for number, group in enumerate(groups):
         sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
-        group_id = generate_group_id(sticky_group, number)
+        [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
+        [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
+        sticky_group = [sticky
+                        for sticky in sticky_group
+                        if 'Label' not in sticky[Field.BG_COLOR]
+                        ]
         population = len(sticky_group)
 
         # Analyze based on sticky note background colors
@@ -122,24 +125,24 @@ def main(filename: str):
 
         positive_colors = ['1-DarkGreen', '2-LightGreen']
         negative_colors = ['4-Orange', '5-Darkred']
-        positive_discussion = check_sentiment( x for x in sticky_group if x[Field.BG_COLOR] in positive_colors)
-        negative_discussion = check_sentiment( x for x in sticky_group if x[Field.BG_COLOR] in negative_colors)
+        positive_text = collect_text(x for x in sticky_group if x[Field.BG_COLOR] in positive_colors)
+        neutral_text = collect_text(x for x in sticky_group if x[Field.BG_COLOR] == '3-Yellow')
+        negative_text = collect_text(x for x in sticky_group if x[Field.BG_COLOR] in negative_colors)
 
-        print(f"Group {group_id}")
-        print(f"   {population} total responses")
-        print(f"   Score: {score}")
-        print(f"   Positive Topics: {positive_discussion.noun_phrases}")
-        print(f"   Negative Topics: {negative_discussion.noun_phrases}")
-        group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
-        for sticky in group_members_by_color:
-            mural_color = sticky[Field.BG_COLOR]
-            text = sticky[Field.TEXT]
-            print(f"   {mural_color}, \"{text}\"")
-        print("\n")
+        analyses.append(Analysis(
+            team_name=team_name,
+            topic=topic,
+            population=population,
+            score=score,
+            red_text=negative_text,
+            yellow_text=neutral_text,
+            green_text=positive_text
+        ))
 
-        scoring.append([group_id, score])
-    for (group_id, score) in scoring:
-        print(f"{group_id}: {score}")
+    writer = csv.DictWriter(sys.stdout,
+                            ['team_name', 'topic', 'score', 'population', 'green_text', 'yellow_text', 'red_text'])
+    writer.writeheader()
+    writer.writerows(asdict(x) for x in analyses)
 
 
 if __name__ == '__main__':
