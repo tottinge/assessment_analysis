@@ -132,12 +132,9 @@ def main(filename: str):
         print(f"   Negative Topics: {negative_discussion.noun_phrases}")
         group_members_by_color = sorted(sticky_group, key=lambda member: member[Field.BG_COLOR])
         for sticky in group_members_by_color:
-            mural_id = sticky[Field.ID]
-            x = sticky[Field.X]
-            y = sticky[Field.Y]
             mural_color = sticky[Field.BG_COLOR]
             text = sticky[Field.TEXT]
-            print(f"   {mural_id}, ({x}, {y}), {mural_color}, \"{text}\"")
+            print(f"   {mural_color}, \"{text}\"")
         print("\n")
 
         scoring.append([group_id, score])
