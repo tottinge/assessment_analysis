@@ -4,11 +4,16 @@ where the download is a set of sticky notes with text,
 color, and position.
 """
 import csv
+import itertools
 import sys
 from dataclasses import dataclass, asdict
 from enum import StrEnum
 from itertools import combinations
 from math import sqrt
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import networkx as nx
 import pandas as pd
@@ -74,18 +79,44 @@ def distance(left: dict, right: dict) -> float:
 
 def build_connection_graph(df):
     stickies_list = list(df.to_dict(orient='records'))
-    raw_distances = [
-        (distance(left, right), left[Field.ID], right[Field.ID])
-        for left, right in combinations(stickies_list, 2)
-    ]
-    distances = sorted(raw_distances, key=lambda node: node[0])
+    label_texts = ['Team-Label', 'Topic-Label']
+    labels_only = [x for x in stickies_list if x[Field.BG_COLOR] in label_texts]
+    notes_only = [x for x in stickies_list if x[Field.BG_COLOR] not in label_texts]
+    label_ids = {item[Field.ID] for item in labels_only}
+
     graph = nx.Graph()
-    for sticky in stickies_list:
+
+    # First mate labels to nearest notes
+    label_proximity = [(distance(label, note), label, note)
+                       for (label, note) in itertools.product(labels_only, notes_only)]
+    label_proximity = sorted(label_proximity, key=lambda x: x[0])
+    labels_connected = set()
+    for (_, label, note) in label_proximity:
+        label_id = label[Field.ID]
+        if label_id in labels_connected:
+            continue
+        labels_connected.add(label_id)
+
+        graph.add_node(label_id, data=label)
+        graph.add_edge(label_id, note[Field.ID], kind='labeling')
+
+        if len(labels_connected) == len(labels_only):
+            break
+
+    # Mate notes to nearest other
+    for sticky in notes_only:
         graph.add_node(sticky[Field.ID], data=sticky)
-    for dist, left, right in distances:
-        graph.add_edge(left, right)
-        least_connections = min(dict(graph.degree).values())
-        if least_connections == 2:
+
+    raw_ticket_proximity = [
+        (distance(left, right), left[Field.ID], right[Field.ID])
+        for left, right in combinations(notes_only, r=2)
+    ]
+    sorted_ticket_proximity = sorted(raw_ticket_proximity)
+
+    for _, left_id, right_id in sorted_ticket_proximity:
+        graph.add_edge(left_id, right_id, kind='proximity')
+        fewest_connections = min(value for key, value in graph.degree if key not in label_ids)
+        if fewest_connections == 2:
             break
     return graph
 
@@ -105,9 +136,28 @@ def main(filename: str):
 
     groups = list(nx.connected_components(graph))
     for number, group in enumerate(groups):
-        sticky_group = [graph.nodes[node_id][Field.DATA] for node_id in group]
-        [team_name] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Team-Label']
-        [topic] = [node[Field.TEXT] for node in sticky_group if node[Field.BG_COLOR] == 'Topic-Label']
+        sticky_group = [graph.nodes[node_id]['data'] for node_id in group]
+
+        team_name = topic = ""
+        extra_names = []
+        extra_topics = []
+        try:
+            [team_name, *extra_names] = [node[Field.TEXT] for node in sticky_group if
+                                         node[Field.BG_COLOR] == 'Team-Label']
+        except ValueError:
+            logger.warning("Group {number} missing a team name label")
+            team_name = "no team name attached"
+
+        try:
+            [topic, *extra_topics] = [node[Field.TEXT] for node in sticky_group if
+                                      node[Field.BG_COLOR] == 'Topic-Label']
+        except ValueError:
+            logger.warning(f"Group {number} missing a topic")
+            topic = "no topic attached."
+
+        if extra_names or extra_topics:
+            logger.warning(f"too many labels for: {team_name} {extra_names}, {topic} {extra_topics}")
+
         sticky_group = [sticky
                         for sticky in sticky_group
                         if 'Label' not in sticky[Field.BG_COLOR]
@@ -144,6 +194,5 @@ def main(filename: str):
     writer.writeheader()
     writer.writerows(asdict(x) for x in analyses)
 
-
 if __name__ == '__main__':
-    main('PartialMap.csv')
+    main('FullMap.csv')
